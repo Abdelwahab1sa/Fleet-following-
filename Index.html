@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام إدارة الأسطول | Fleet Management</title>
+    <title>نظام إدارة الأسطول</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -167,16 +167,6 @@
         }
         .sync-indicator.active { display: block; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-        .setup-notice {
-            background: #fff3cd;
-            border: 2px solid #ffc107;
-            color: #856404;
-            padding: 15px;
-            margin: 15px;
-            border-radius: 10px;
-            font-size: 13px;
-            text-align: center;
-        }
         @media (max-width: 768px) {
             .header h1 { font-size: 17px; }
             .stats { grid-template-columns: repeat(2, 1fr); }
@@ -199,10 +189,6 @@
             </button>
             <h1 id="mainTitle">نظام إدارة الأسطول اللوجستي</h1>
             <p id="mainSubtitle">متابعة السيارات وحالاتها لحظياً</p>
-        </div>
-
-        <div id="setupNotice" class="setup-notice" style="display:none;">
-            <strong>⚠️ تنبيه:</strong> يجب إعداد Firebase أولاً. افتح الكود واستبدل بيانات firebaseConfig ببيانات مشروعك.
         </div>
 
         <div class="stats">
@@ -300,43 +286,16 @@
         </div>
     </div>
 
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-
     <script>
         // ============================================
-        // ⚠️ مهم جداً: استبدل هذه البيانات ببيانات مشروعك من Firebase
+        // بيانات JSONBin - جاهزة ومعبأة
         // ============================================
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-            projectId: "YOUR_PROJECT",
-            storageBucket: "YOUR_PROJECT.appspot.com",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        };
+        const BIN_ID = '6a8d8236da38895dfe0e70b3';
+        const API_KEY = '$2a$10$bsdo0.Y/028jFoTh1bCtT.fzaHOclRRQshm9V8P5S2J5v4snXH9Zm';
+        const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
         // ============================================
-        // تهيئة Firebase
-        // ============================================
-        let database, vehiclesRef, firebaseReady = false;
-        try {
-            if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
-                firebase.initializeApp(firebaseConfig);
-                database = firebase.database();
-                vehiclesRef = database.ref('vehicles');
-                firebaseReady = true;
-            } else {
-                document.getElementById('setupNotice').style.display = 'block';
-            }
-        } catch (e) {
-            console.error('Firebase error:', e);
-            document.getElementById('setupNotice').style.display = 'block';
-        }
-
-        // ============================================
-        // المتغيرات
+        // متغيرات عامة
         // ============================================
         let currentLang = 'ar';
         let vehicles = [];
@@ -417,7 +376,7 @@
                 lblSupplier: 'Supplier',
                 lblDest: 'Destination',
                 lblType: 'Vehicle Type',
-                btnSave: '💾 Save',
+                btnSave: ' Save',
                 statusLoaded: 'Loaded',
                 statusWaiting: 'Waiting',
                 typeInternal: 'Internal',
@@ -450,7 +409,6 @@
                 const el = document.getElementById(key);
                 if (el) el.textContent = t[key];
             });
-            // تحديث خيارات القوائم
             const statusSelect = document.getElementById('status');
             if (statusSelect) {
                 statusSelect.options[0].text = t.optLoaded;
@@ -494,17 +452,52 @@
         }
 
         // ============================================
-        // حفظ السيارة
+        // جلب البيانات من JSONBin
+        // ============================================
+        async function fetchVehicles() {
+            showSyncIndicator();
+            try {
+                const response = await fetch(BIN_URL + '/latest', {
+                    headers: { 'X-Master-Key': API_KEY }
+                });
+                const data = await response.json();
+                vehicles = data.record.vehicles || [];
+                renderTable();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+            hideSyncIndicator();
+        }
+
+        // ============================================
+        // حفظ البيانات في JSONBin
+        // ============================================
+        async function saveVehicles() {
+            showSyncIndicator();
+            try {
+                await fetch(BIN_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': API_KEY
+                    },
+                    body: JSON.stringify({ vehicles: vehicles })
+                });
+            } catch (error) {
+                console.error('Error saving data:', error);
+            }
+            hideSyncIndicator();
+        }
+
+        // ============================================
+        // حفظ السيارة (إضافة أو تعديل)
         // ============================================
         document.getElementById('vehicleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!firebaseReady) {
-                alert('Firebase not configured!');
-                return;
-            }
             
             const vehicleId = document.getElementById('vehicleId').value;
             const vehicleData = {
+                id: vehicleId || Date.now().toString(),
                 number: document.getElementById('vehicleNumber').value,
                 driver: document.getElementById('driverName').value,
                 factory: document.getElementById('factory').value,
@@ -512,41 +505,31 @@
                 supplier: document.getElementById('supplier').value,
                 destination: document.getElementById('destination').value,
                 type: document.getElementById('vehicleType').value,
-                updatedAt: firebase.database.ServerValue.TIMESTAMP
+                updatedAt: new Date().toISOString()
             };
 
-            showSyncIndicator();
-            try {
-                if (vehicleId) {
-                    await vehiclesRef.child(vehicleId).update(vehicleData);
-                } else {
-                    vehicleData.createdAt = firebase.database.ServerValue.TIMESTAMP;
-                    await vehiclesRef.push(vehicleData);
-                }
-                closeModal();
-                hideSyncIndicator();
-            } catch (error) {
-                console.error('Error:', error);
-                hideSyncIndicator();
-                alert('Error: ' + error.message);
+            if (vehicleId) {
+                const index = vehicles.findIndex(v => v.id === vehicleId);
+                if (index !== -1) vehicles[index] = vehicleData;
+            } else {
+                vehicleData.createdAt = new Date().toISOString();
+                vehicles.push(vehicleData);
             }
+
+            await saveVehicles();
+            closeModal();
+            renderTable();
         });
 
         // ============================================
         // حذف سيارة
         // ============================================
         async function deleteVehicle(id) {
-            if (!firebaseReady) return;
             const t = translations[currentLang];
             if (confirm(t.confirmDelete)) {
-                showSyncIndicator();
-                try {
-                    await vehiclesRef.child(id).remove();
-                    hideSyncIndicator();
-                } catch (error) {
-                    console.error('Error:', error);
-                    hideSyncIndicator();
-                }
+                vehicles = vehicles.filter(v => v.id !== id);
+                await saveVehicles();
+                renderTable();
             }
         }
 
@@ -607,29 +590,16 @@
         }
 
         // ============================================
-        // الاستماع للتغييرات اللحظية
+        // تحديث يدوي
         // ============================================
-        if (firebaseReady) {
-            vehiclesRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                vehicles = [];
-                if (data) {
-                    Object.keys(data).forEach(key => {
-                        vehicles.push({ id: key, ...data[key] });
-                    });
-                }
-                vehicles.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                renderTable();
-                showSyncIndicator();
-                hideSyncIndicator();
-            });
+        function refreshData() {
+            fetchVehicles();
         }
 
-        function refreshData() {
-            if (!firebaseReady) return;
-            showSyncIndicator();
-            vehiclesRef.once('value').then(() => hideSyncIndicator());
-        }
+        // ============================================
+        // تحميل البيانات عند فتح التطبيق
+        // ============================================
+        window.addEventListener('load', fetchVehicles);
     </script>
 </body>
 </html>
